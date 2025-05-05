@@ -1,18 +1,18 @@
-# aws-glue-etl-r3-rds-redshift
-
 # Use Case for this Project
 Perform the ETL (Extract, Transform, Load) process using AWS Glue along with Amazon S3, RDS, Redshift.
 
 # AWS Services
-- AWS Glue
-- Amazon S3 (Simple Storage Service)
+- **AWS Glue**
+- **Amazon S3** (Simple Storage Service)
   - Created a bucket for `aws-bucket-for-athena-results` to store Athena Query Results.
-- Amazon Athena
-- Amazon Aurora and RDS (Relational Database Service)
+- **Amazon Athena**
+- **Amazon RDS** (Amazon Aurora and RDS - Relational Database Service)
   - Required MySQL Workbench to extract data from csv files and load it to RDS db.
-- Amazon EC2 (Elastic Compute Cloud)
-  - Created Security group for connection between RDS and MySQL Workbench.
-- Amazon Redshift
+- **Amazon EC2** (Elastic Compute Cloud)
+  - Created Security group for connection between RDS and MySQL Workbench, RDS and AWS Glue.
+- **Amazon VPC**
+  - Set up VPC Endpoints for connection between RDS and AWS Glue
+- **Amazon Redshift**
   
 # How does it work?
 ### Step 1: Create an IAM role for AWS Glue to get full permission
@@ -65,18 +65,19 @@ Perform the ETL (Extract, Transform, Load) process using AWS Glue along with Ama
     - Master username: admin
     - Master password: {your_password}
     - Create database
-#### Step 3.2 Set up prerequisites to connect from MySQL Workbench
+#### Step 3.2 Set up Security Groups to connect from MySQL Workbench
   - Modify RDS DB instance
     - Additional configuration: select `Publicly accessible` to connect from MySQL Workbench
   - Open EC2 > Security Groups > Create security group
     - Security group name: `SG-Open-MySQL`
     - Description: `Allows MySQL Access to Developers`
     - VPC Info: select the default one
-    - Inbound rules > Add rule
-      - Type: `Custom TCP`
-      - Port range: `3306`
-      - Source: Anywhere-IPv4
-      - Create security group
+    - Inbound rules
+      - > Add rule (to allow MySQL Connection)
+        - Type: `Custom TCP`
+        - Port range: `3306`
+        - Source: Anywhere-IPv4
+        - Create security group
   - Navigate to RDS > `customers-info-rds-db-instance` > Modify
     - Connectivity > Select security group `SG-Open-MySQL`
   - Open MySQL Workbench
@@ -96,9 +97,7 @@ Perform the ETL (Extract, Transform, Load) process using AWS Glue along with Ama
   - Right click on `Tables` > Select `Table Data Import Wizard`
     - Create new table: `customerinfodb`, `customers`  
 
-#### Step 3.4 Create AWS Glue Database and create connection between AWS Glue and RDS
-  - Navigate to AWS Glue > Data Catalog > Databases > Add database
-    - Database name: `customers-glue-db` > Create database
+#### Step 3.4 Set up Security Groups and VPC Endpoints for connection between AWS Glue and RDS
   - Navigate to AWS Glue > Connectors > Create connection
     - Choose data source: `Amazon Aurora (RDS)`
     - Database instances: `customers-info-rds-db-instance`
@@ -106,5 +105,51 @@ Perform the ETL (Extract, Transform, Load) process using AWS Glue along with Ama
     - Username: `admin`
     - Password: {your_password}
     - Connection name: `RDSConnection`
+  - Open EC2 > Security Groups > `SG-Open-MySQL` security group > Add Inbound rule
+    - Inbound rules
+      - > Add rule (to allow AWS Glue Connection)
+        - Type: `All TCP`
+        - Source: Anywhere-IPv4
+  - Navigate to VPC > Endpoints > Create endpoint
+    - Name tag: `VPC Endpoint to S3`
+    - Service category: `AWS services`
+    - Services: `Service Name = com.amazonaws.us-east-1.s3` > Select `Gateway` type
+    - VPC: select the default one
+    - Route tables: select the default one
+    - Create endpoint
+  - Test connection of `RDSConnection`
 
+#### Step 3.5 Add tables using Crawler
+  - Navigate to AWS Glue > Databases > `customers-glue-db`
+  - Click on `Add tables using crawler`
+  - Crawler name: `customers-crawler`
+      - Is your data already mapped to Glue tables? `No`
+      - Data sources > `Add a data source`
+        - Data source: `JDBC`
+        - Connection: `RDSConnection`
+        - Include path: `customerinfodb/%`
+        - Add a JDBC data source
+      - Choose an IAM role: `GlueFullAccessRole`
+      - Target database: `customers-glue-db`
+      - Crawler schedule - Frequency: `On demand`
+      - Create Crawler
+    - Run crawler `customers-crawler`
+      - This would create a table in the database with the data extracted from RDS db table within MySQL Workbench.
 
+### Step 4: Create target - Amazon Redshift
+#### Step 4.1 Create IAM role
+  - Navigate to IAM > Roles > Create role
+    - Trusted entity type: `AWS Service`
+    - Service/Use case: `Redshift`
+      - Use case: `Redshift - Customizable`
+    - Add permissions: `Administrator Access`
+    - Role name: `RedshiftFullAccessRole`
+  - Description: `Allows Redshift clusters to call AWS services on your behalf.`
+  - Create role
+#### Step 4.2 Set up Redshift
+  - Navigate to Amazon Redshift > Select `Try Redshift Serverless free trial`
+    - Configuration: `Customize settings`
+    - Target namespace: `mynamespace`
+    - Associated IAM roles: `RedshiftFullAccessRole`
+    - Workgroup name: `myworkgroup`
+    - Save configuration
