@@ -153,3 +153,51 @@ Perform the ETL (Extract, Transform, Load) process using AWS Glue along with Ama
     - Associated IAM roles: `RedshiftFullAccessRole`
     - Workgroup name: `myworkgroup`
     - Save configuration
+  - Amazon Redshift Serverless > Namespace configuration > mynamespace > select `Query data`
+    - Click on `Serverless: myworkgroup`
+      - Connect to myworkgroup:
+        - Authentication: Federated user
+        - Database: dev
+        - Create connection
+    - `Serverless: myworkgroup` > `native databases` > dev > public > Talbes
+    - Click on `Create` > Create table
+      -  Schema: `public`
+      -  Table: `finaltbl`
+      -  Add columns (this can be based on the Output Schema from Glue)
+      -  Create table
+#### Step 4.3 Set up connection between AWS Glue and Amazon Redshift (via JDBC)
+  - Navigate to AWS Glue > Connectors > Create connection
+    - Choose data source: `JDBC`
+    - JDBC URL: retrieved from Redshift myworkgroup
+    - Username: `admin`
+    - Password: {your_password}
+    - Connection name: `RedshiftConnection`
+
+### Step 5 Create AWS Glue Job
+  - Name: `glue-etl-to-redshift`
+  - Job Details > Choose an IAM role: `GlueFullAccessRole`
+  - Be mindful that "running" the job will incur costs.
+
+### Step 6 Clean up
+  - Redshift
+    - Workgroup (myworkgroup): Action - Delete
+    - Namespace (mynamespace): Action - Delete (don't create final snapshot)
+  - AWS Glue
+    - Databases - Delete (this deletes tables)
+    - Crawlers - Delete
+    - Data Connections - Delete
+  - ETL Job
+    - Can be kept or deleted
+  - RDS
+    - Database instance - Delete (don't create snapshot)
+  - VPC
+    - Endpoints - Delete
+  - EC2
+    - Security Groups - Delete (not chargeable)
+      - > delete network interfaces (linked to Redshift)
+    - Delete inbound rules
+  - S3
+    - Empty bucket > Delete bucket
+    - Glue bucket > Empty and delete bucket
+  -  IAM
+    - Delete Glue and Redshift roles
